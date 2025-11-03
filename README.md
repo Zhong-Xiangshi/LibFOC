@@ -1,6 +1,7 @@
-# libfoc  
+# LibFOC
+(正在开发中)  
 An embedded FOC library  
-嵌入式 FOC 库  
+嵌入式 FOC 库
 
 ## ⚠️ 安全警告 / Safety Warnings
 电机控制可能造成人身伤害或设备损坏  
