@@ -39,21 +39,11 @@ void foc_get_mech_angle(float *angle)
 
 }
 
-/// @brief 获得3个相电流，单位安培，输出(流向电机)为正
-/// @param phase_a
-/// @param phase_b
-/// @param phase_c
-void foc_get_phase_current(float *phase_a, float *phase_b, float *phase_c)
-{
-
-}
-
 foc_interface_t foc_driver = {
     .foc_driver_init = foc_driver_init,
     .foc_motor_set_phase = foc_motor_set_phase,
     .foc_motor_enable = foc_motor_enable,
     .foc_get_mech_angle = foc_get_mech_angle,
-    .foc_get_phase_current = foc_get_phase_current,
 };
 
 /// @brief 调试打印

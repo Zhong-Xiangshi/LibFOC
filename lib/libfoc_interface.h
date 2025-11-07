@@ -24,12 +24,6 @@ typedef struct{
     /// @param angle 角度，0°-360°，顺时针增加，单位1°
     void (*foc_get_mech_angle)(float *angle);
 
-    /// @brief 获得3个相的电流，单位1A，输出(流向电机)为正
-    /// @param phase_a
-    /// @param phase_b 
-    /// @param phase_c 
-    void (*foc_get_phase_current)(float *phase_a, float *phase_b, float *phase_c);
-
 } foc_interface_t;
 
 void foc_debug_printf(const char *const fmt, ...);
