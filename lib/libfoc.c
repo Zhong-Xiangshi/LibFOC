@@ -8,38 +8,11 @@
 #define SQRT3 1.732f
 #define SQRT3_2 0.866f // sqrt(3)/2
 
-
-
-//向量计算
-vector vector_add(vector a, vector b);
-vector vector_multiply(vector a, float b);
-float vector_dot(vector a, vector b);
-float vector_length(vector a);
-float vector_projection(vector a, vector b);
-vector vector_rotate(vector a, float rad);
-
-//PID计算
-float pid_calculate(pid_param *pid, float target, float current);
-
-/*
-    中间函数
-*/
-static void foc_motor_set_step(motor *motor,uint8_t step);
-static void foc_motor_spwm_control_by_rad(motor *motor,float size,float rad);
-static void foc_motor_spwm_control_by_angle(motor *motor,float size,float angle);
-static void foc_motor_spwm_control(motor *motor,vector v);
-static void foc_motor_svpwm_control(motor *motor,vector v);
-//校准初始角度
-static void foc_base_angle_calibration(motor *motor);
-
-
-
-
 /// @brief 向量相加
 /// @param a 
 /// @param b 
 /// @return 
-vector vector_add(vector a, vector b){
+static inline vector vector_add(vector a, vector b){
     vector c;
     c.x = a.x + b.x;
     c.y = a.y + b.y;
@@ -50,7 +23,7 @@ vector vector_add(vector a, vector b){
 /// @param a 
 /// @param b 
 /// @return 
-vector vector_multiply(vector a, float b){
+static inline vector vector_multiply(vector a, float b){
     vector c;
     c.x = a.x * b;
     c.y = a.y * b;
@@ -61,14 +34,14 @@ vector vector_multiply(vector a, float b){
 /// @param a 
 /// @param b 
 /// @return 
-float vector_dot(vector a, vector b){
+static inline float vector_dot(vector a, vector b){
     return a.x * b.x + a.y * b.y;
 }
 
 /// @brief 向量长度
 /// @param a 
 /// @return 
-float vector_length(vector a){
+static inline float vector_length(vector a){
     return sqrtf(vector_dot(a, a));
 }
 
@@ -77,7 +50,7 @@ float vector_length(vector a){
 /// @param a 
 /// @param b 
 /// @return 
-float vector_projection(vector a, vector b){
+static inline float vector_projection(vector a, vector b){
     return vector_dot(a, b) / vector_length(a);
 }
 
@@ -85,7 +58,7 @@ float vector_projection(vector a, vector b){
 /// @param a 
 /// @param rad 
 /// @return 
-vector vector_rotate(vector a, float rad){
+static inline vector vector_rotate(vector a, float rad){
     vector b;
     b.x = a.x * cosf(rad) - a.y * sinf(rad);
     b.y = a.x * sinf(rad) + a.y * cosf(rad);
@@ -95,7 +68,7 @@ vector vector_rotate(vector a, float rad){
 
 /// @brief 六步换向法控制电机函数
 /// @param step 
-void foc_motor_set_step(motor *motor,uint8_t step){
+static void foc_motor_set_step(motor *motor,uint8_t step){
     switch (step)
     {
         case 1:
@@ -125,7 +98,7 @@ void foc_motor_set_step(motor *motor,uint8_t step){
 /// @brief SPWM控制电机函数
 /// @param size 单位：pwm值 (峰值，相对于pwm_mid的偏移)
 /// @param rad 单位：弧度 (a相的当前电角度)
-void foc_motor_spwm_control_by_rad(motor *motor, float size, float rad)
+static void foc_motor_spwm_control_by_rad(motor *motor, float size, float rad)
 {
     int16_t phase_a_pwm, phase_b_pwm, phase_c_pwm;
     uint16_t pwm_max = motor->motor_pwm_max;
@@ -162,7 +135,7 @@ void foc_motor_spwm_control_by_rad(motor *motor, float size, float rad)
 /// @brief SVPWM控制电机函数，使用最小/最大值注入零序分量的调制方法
 /// @param motor 
 /// @param v valpha,vbeta
-void foc_motor_svpwm_control(motor *motor,vector v)
+static void foc_motor_svpwm_control(motor *motor,vector v)
 {
     float phase_a_tmp, phase_b_tmp, phase_c_tmp;
     float pwm_mid= motor->motor_pwm_max / 2.0f; // PWM中点
@@ -188,7 +161,7 @@ void foc_motor_svpwm_control(motor *motor,vector v)
     // foc_debug_printf("PWM OUTPUT rad=%.1f,size=%.1f,mid_offset_phase=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/3.1415f,size,mid_offset_phase,motor->phase_a, motor->phase_b, motor->phase_c);
     motor->driver.foc_motor_set_phase(motor->phase_a, motor->phase_b, motor->phase_c);
 }
-void foc_motor_spwm_control(motor *motor,vector v)
+static void foc_motor_spwm_control(motor *motor,vector v)
 {
     float size,rad;
     size = vector_length(v);
@@ -200,14 +173,14 @@ void foc_motor_spwm_control(motor *motor,vector v)
 /// @brief 通过角度矢量控制电机函数
 /// @param size 
 /// @param angle 
-void foc_motor_spwm_control_by_angle(motor *motor,float size,float angle)
+static void foc_motor_spwm_control_by_angle(motor *motor,float size,float angle)
 {
     float rad = angle * PI / 180.0f; 
     foc_motor_spwm_control_by_rad(motor,size, rad);
 }
 
 //从三相电流中获得克拉克坐标系电流矢量
-inline vector foc_get_current_vector(float phase_a, float phase_b, float phase_c){
+static inline vector foc_get_current_vector(float phase_a, float phase_b, float phase_c){
     vector current;
     current.x = phase_a;
     current.y = (phase_b-phase_c)*SQRT3_2;
@@ -219,7 +192,7 @@ inline vector foc_get_current_vector(float phase_a, float phase_b, float phase_c
 /// @param target 目标值
 /// @param current 当前值
 /// @return 控制量
-float pid_calculate(pid_param *pid, float target, float current){
+static float pid_calculate(pid_param *pid, float target, float current){
     float diff;
     pid->input =current*(1-pid->alpha)+ pid->input*pid->alpha; // 低通滤波
     pid->error = target-pid->input;
@@ -229,6 +202,16 @@ float pid_calculate(pid_param *pid, float target, float current){
     diff = pid->error - pid->last_error;
     pid->last_error = pid->error;
     return pid->scale*(pid->kp * pid->error + pid->i+pid->kd * diff);
+}
+
+//校准初始角度
+static void foc_base_angle_calibration(motor *motor){
+    motor->driver.foc_motor_enable(1); // 使能电机驱动
+    foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 0);
+    foc_delay_ms(1000);
+    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
+    foc_delay_ms(10);
+    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
 }
 
 int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t motor_pwm_max){
@@ -248,15 +231,6 @@ int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t mot
 void foc_set_mode(motor *motor,foc_mode mode){
     if(mode >= FOC_MODE_MAX) return;
     motor->mode = mode;
-}
-
-void foc_base_angle_calibration(motor *motor){
-    motor->driver.foc_motor_enable(1); // 使能电机驱动
-    foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 0);
-    foc_delay_ms(1000);
-    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
-    foc_delay_ms(10);
-    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
 }
 
 void foc_current_set_pid_param(motor *motor,float scale,float iq_kp,float iq_ki,float id_kp,float id_ki){
