@@ -129,30 +129,20 @@ void foc_demo_1(motor *motor);
 void foc_demo_2(motor *motor);
 
 /*
-    用于调试电流方向。每隔1s顺时针通电ABC三相,并LOG打印显示三相电流。正常情况：A通电A相电流正，B通电B相电流正，C通电C相电流正。错误请修改底层驱动对应好。只依赖电流传感器。
+    使用方法：请开启中断读取三相电流值，将电流值指针传入此函数，后面几个函数也做相同操作。
+    用于调试电流方向。每隔1s顺时针通电ABC三相,并LOG打印显示三相电流。正常情况：A通电A相电流正，B通电B相电流正，C通电C相电流正。错误请修改驱动对应好。只依赖电流传感器。
 */
-void foc_demo_31(motor *motor); 
+void foc_demo_31(motor *motor,float *phase_a_current,float *phase_b_current,float *phase_c_current); 
 
 /*
     以90°固定电压矢量控制电机顺时针转动,LOG打印三相电流。用手捏住电机缓慢转动可以看到交流变化波形。依赖角度传感器、电流传感器、极对数。
 */
-void foc_demo_32(motor *motor,uint8_t motor_en);    
+void foc_demo_32(motor *motor,uint8_t motor_en,float *phase_a_current,float *phase_b_current,float *phase_c_current);    
 
 /*
     以90°固定电压矢量控制电机，显示IQ和ID电流。正常情况堵转ID接近0。依赖角度传感器、电流传感器、极对数。
+    这个如果ok就可以直接调用更新电流环函数开始调PID了
 */
-void foc_demo_4(motor *motor); 
-
-/*
-    Torque control. Displays IQ, ID, VQ, VD. Depends on angle/current sensors/pole pairs.
-    力矩控制，显示IQ、ID、VQ、VD。依赖角度传感器、电流传感器、极对数。
-*/
-void foc_demo_5(motor *motor,uint8_t motor_en,float target_iq); 
-
-/*
-    Based on demo4 with IQ/ID low-pass filtering added. Displays IQ and ID currents.
-    以demo4为原型添加IQ、ID低通滤波，显示IQ和ID电流
-*/
-void foc_demo_6(motor *motor,uint8_t motor_en); 
+void foc_demo_4(motor *motor,float *phase_a_current,float *phase_b_current,float *phase_c_current); 
 
 #endif

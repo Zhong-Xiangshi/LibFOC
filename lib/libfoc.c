@@ -433,34 +433,29 @@ void foc_demo_2(motor *motor){
 }
 
 
-void foc_demo_31(motor *motor){
-    float phase_a_current, phase_b_current, phase_c_current;
+void foc_demo_31(motor *motor,float *phase_a_current,float *phase_b_current,float *phase_c_current){
 
     motor->driver.foc_motor_enable(1);
     while (1)
     {
         foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 0);
         foc_delay_ms(500);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        foc_debug_printf("A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", phase_a_current, phase_b_current, phase_c_current);
+        foc_debug_printf("A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
         foc_delay_ms(500);
         foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 120);
         foc_delay_ms(500);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        foc_debug_printf("B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", phase_a_current, phase_b_current, phase_c_current);
+        foc_debug_printf("B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
         foc_delay_ms(500);
         foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 240);
         foc_delay_ms(500);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        foc_debug_printf("C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", phase_a_current, phase_b_current, phase_c_current);
+        foc_debug_printf("C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
         foc_delay_ms(500);
     }
     
 }
 
 
-void foc_demo_32(motor *motor,uint8_t motor_en){
-    float phase_a_current, phase_b_current, phase_c_current;
+void foc_demo_32(motor *motor,uint8_t motor_en,float *phase_a_current,float *phase_b_current,float *phase_c_current){
     float mech_angle=0;
     int elec_angle=0;
     foc_base_angle_calibration(motor); // 校准初始角度
@@ -470,14 +465,12 @@ void foc_demo_32(motor *motor,uint8_t motor_en){
         motor->driver.foc_get_mech_angle(&mech_angle);
         elec_angle = (mech_angle - motor->mech_angle_zero)*motor->pole_pairs;
         if(motor_en)foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max/2, elec_angle+90.0f);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        foc_debug_printf("%.2f,%.2f,%.2f\n", phase_a_current, phase_b_current, phase_c_current);
+        foc_debug_printf("%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
     }
     
 }
 
-void foc_demo_4(motor *motor){
-    float phase_a_current, phase_b_current, phase_c_current;
+void foc_demo_4(motor *motor,float *phase_a_current,float *phase_b_current,float *phase_c_current){
     float mech_angle=0;
     float iq=0,id=0;
     int elec_angle=0;
@@ -490,14 +483,13 @@ void foc_demo_4(motor *motor){
     while (1)
     {
         motor->driver.foc_get_mech_angle(&mech_angle);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
         elec_angle = (mech_angle - motor->mech_angle_zero)*motor->pole_pairs;
         parker_x.x = cosf(elec_angle*PI/180.0f);
         parker_x.y = sinf(elec_angle*PI/180.0f);
         parker_y.x = -parker_x.y;
         parker_y.y = parker_x.x;
 
-        current_vec=foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current);
+        current_vec=foc_get_current_vector(*phase_a_current, *phase_b_current, *phase_c_current);
         current_vec_angle = atan2f(current_vec.y, current_vec.x)*180.0f/PI;
         id = vector_projection(parker_x, current_vec);
         iq = vector_projection(parker_y, current_vec);
@@ -512,109 +504,6 @@ void foc_demo_4(motor *motor){
         voltage_vec.y = 15;
         
         foc_motor_spwm_control(motor,vector_add(vector_multiply(parker_x,voltage_vec.x),vector_multiply(parker_y,voltage_vec.y)));
-    }
-    
-}
-
-/// @brief 依赖角度传感器、电流传感器、极对数。力矩控制，显示IQ、ID、VQ、VD
-/// @param motor_en 是否启用电机
-/// @param target_iq 目标电流，和力矩成正比
-void foc_demo_5(motor *motor,uint8_t motor_en,float target_iq){
-    float phase_a_current, phase_b_current, phase_c_current;
-    float mech_angle=0,mech_angle_zero=0;
-    float iq=0,id=0;
-    float target_id=0;
-    int elec_angle=0;
-    int print_count=0;
-
-    vector parker_x,parker_y;
-    vector current_vec;
-    vector voltage_vec;
-
-    //PID参数调整
-    pid_param pid_iq,pid_id;
-    pid_iq.kp=16;
-    pid_iq.ki=5;
-    pid_iq.i_max=motor->motor_pwm_max;
-    pid_iq.i_min=-motor->motor_pwm_max;
-    pid_iq.i=0;
-
-    pid_id.kp=30;
-    pid_id.ki=5;
-    pid_id.i_max=motor->motor_pwm_max;
-    pid_id.i_min=-motor->motor_pwm_max;
-    pid_id.i=0;
-
-    motor->driver.foc_motor_enable(motor_en); // 使能电机驱动
-    foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 0);
-    foc_delay_ms(1000);
-    motor->driver.foc_get_mech_angle(&mech_angle_zero);
-
-    while (1)
-    {
-        motor->driver.foc_get_mech_angle(&mech_angle);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        elec_angle = (mech_angle - mech_angle_zero)*motor->pole_pairs;
-        parker_x.x = cosf(elec_angle*PI/180.0f);
-        parker_x.y = sinf(elec_angle*PI/180.0f);
-        parker_y.x = -parker_x.y;
-        parker_y.y = parker_x.x;
-
-        current_vec=foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current);
-        iq = vector_projection(parker_x, current_vec);
-        id = vector_projection(parker_y, current_vec);
-
-        print_count++;
-        if(print_count>500){  //控制打印频率，频率高很影响速度
-            print_count=0;
-            foc_debug_printf("%.2f,%.2f,%.2f,%.2f\n", iq, id,voltage_vec.y,voltage_vec.x);
-        }
-        
-        voltage_vec.x = -pid_calculate(&pid_id, target_id, id);
-        voltage_vec.y = pid_calculate(&pid_iq, target_iq, iq);
-
-        
-        foc_motor_svpwm_control(motor,vector_add(vector_multiply(parker_x,voltage_vec.x),vector_multiply(parker_y,voltage_vec.y)));
-    }
-    
-}
-
-void foc_demo_6(motor *motor,uint8_t motor_en){
-    float phase_a_current, phase_b_current, phase_c_current;
-    float mech_angle=0,mech_angle_zero=0;
-    float iq=0,id=0;
-    int elec_angle=0;
-    vector parker_x,parker_y;
-    vector current_vec;
-    vector voltage_vec;
-    motor->driver.foc_motor_enable(motor_en); // 使能电机驱动
-    foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max, 0);
-    foc_delay_ms(1000);
-    motor->driver.foc_get_mech_angle(&mech_angle_zero);
-
-    while (1)
-    {
-        motor->driver.foc_get_mech_angle(&mech_angle);
-        motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
-        elec_angle = (mech_angle - mech_angle_zero)*motor->pole_pairs;
-        parker_x.x = cosf(elec_angle*PI/180.0f);
-        parker_x.y = sinf(elec_angle*PI/180.0f);
-        parker_y.x = -parker_x.y;
-        parker_y.y = parker_x.x;
-
-        current_vec=foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current);
-        float alpha=0.7;
-        iq = iq*alpha + (1-alpha)*vector_projection(parker_x, current_vec);
-        id = id*alpha + (1-alpha)*vector_projection(parker_y, current_vec);
-        // iq = vector_projection(parker_x, current_vec);
-        // id = vector_projection(parker_y, current_vec);
-        foc_debug_printf("%.2f,%.2f\n", iq, id);
-
-        //固定电压矢量
-        voltage_vec.x = -8;
-        voltage_vec.y = 15;
-        
-        foc_motor_svpwm_control(motor,vector_add(vector_multiply(parker_x,voltage_vec.x),vector_multiply(parker_y,voltage_vec.y)));
     }
     
 }
