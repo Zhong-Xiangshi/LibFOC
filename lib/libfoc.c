@@ -206,12 +206,11 @@ void foc_motor_spwm_control_by_angle(motor *motor,float size,float angle)
     foc_motor_spwm_control_by_rad(motor,size, rad);
 }
 
-//从三相电流中获得电流矢量
-vector foc_get_current_vector(float phase_a, float phase_b, float phase_c){
+//从三相电流中获得克拉克坐标系电流矢量
+inline vector foc_get_current_vector(float phase_a, float phase_b, float phase_c){
     vector current;
-    const float tmp = sqrtf(3.0f)/2.0f;
     current.x = phase_a;
-    current.y = (phase_b-phase_c)*tmp;
+    current.y = (phase_b-phase_c)*SQRT3_2;
     return current;
 }
 
@@ -278,11 +277,10 @@ void foc_current_set_pid_param(motor *motor,float scale,float iq_kp,float iq_ki,
     motor->pid_id.alpha=0;
 }
 
-void foc_current_update(motor *motor){
+void foc_current_update(motor *motor,float phase_a_current,float phase_b_current,float phase_c_current){
 
     if(motor->init_already==0) return; // 如果没有初始化，直接返回
     motor->driver.foc_get_mech_angle(&motor->mech_angle);//34%
-    motor->driver.foc_get_phase_current(&motor->phase_a_current, &motor->phase_b_current, &motor->phase_c_current);//6%
     const float tmp=PI/180.0f;
     motor->elec_angle_rad = (motor->mech_angle - motor->mech_angle_zero)*motor->pole_pairs*tmp;
     motor->parker_x.x = cosf(motor->elec_angle_rad);//6%
@@ -290,13 +288,13 @@ void foc_current_update(motor *motor){
     motor->parker_y.x = -motor->parker_x.y;
     motor->parker_y.y = motor->parker_x.x;
 
-    motor->current_vec=foc_get_current_vector(motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);//2.6%
+    motor->current_by_clarke=foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current);//2.6%
 
     // float alpha=0.5f;
-    // motor->id = motor->id*alpha + (1-alpha)*vector_projection(motor->parker_x, motor->current_vec);
-    // motor->iq = motor->iq*alpha + (1-alpha)*vector_projection(motor->parker_y, motor->current_vec);
-    motor->id = vector_projection(motor->parker_x, motor->current_vec);//4.5%
-    motor->iq = vector_projection(motor->parker_y, motor->current_vec);//4.5%
+    // motor->id = motor->id*alpha + (1-alpha)*vector_projection(motor->parker_x, motor->current_by_clarke);
+    // motor->iq = motor->iq*alpha + (1-alpha)*vector_projection(motor->parker_y, motor->current_by_clarke);
+    motor->id = vector_projection(motor->parker_x, motor->current_by_clarke);//4.5%
+    motor->iq = vector_projection(motor->parker_y, motor->current_by_clarke);//4.5%
 
     // static int print_count=0;
     // print_count++;
@@ -492,18 +490,19 @@ void foc_demo_32(motor *motor,uint8_t motor_en){
     float mech_angle=0;
     int elec_angle=0;
     foc_base_angle_calibration(motor); // 校准初始角度
+    motor->driver.foc_motor_enable(motor_en);
     while (1)
     {
         motor->driver.foc_get_mech_angle(&mech_angle);
         elec_angle = (mech_angle - motor->mech_angle_zero)*motor->pole_pairs;
-        foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max/2, elec_angle+90.0f);
+        if(motor_en)foc_motor_spwm_control_by_angle(motor,motor->motor_pwm_max/2, elec_angle+90.0f);
         motor->driver.foc_get_phase_current(&phase_a_current, &phase_b_current, &phase_c_current);
         foc_debug_printf("%.2f,%.2f,%.2f\n", phase_a_current, phase_b_current, phase_c_current);
     }
     
 }
 
-void foc_demo_4(motor *motor,uint8_t motor_en){
+void foc_demo_4(motor *motor){
     float phase_a_current, phase_b_current, phase_c_current;
     float mech_angle=0;
     float iq=0,id=0;
