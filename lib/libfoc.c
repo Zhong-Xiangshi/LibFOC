@@ -214,12 +214,13 @@ static void foc_base_angle_calibration(motor *motor){
     motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
 }
 
-int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t motor_pwm_max){
+int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t motor_pwm_max,float i_max){
     if(motor==NULL) return -EINVAL; // 参数错误
     if(pole_pairs==0 || motor_pwm_max==0) return -EINVAL; // 极对数和最大占空比不能为0
     motor->driver = driver; // 设置驱动函数接口
     motor->pole_pairs=pole_pairs;
     motor->motor_pwm_max=motor_pwm_max;
+    motor->i_max=i_max;
     motor->driver.foc_driver_init();
     motor->driver.foc_motor_set_phase(0, 0, 0); // 设置初始占空比为0
     foc_base_angle_calibration(motor);
@@ -276,7 +277,8 @@ void foc_current_update(motor *motor,float phase_a_current,float phase_b_current
     //     print_count=0;
     //     foc_debug_printf("%.2f,%.2f,%.2f,%.2f\n", motor->iq, motor->id,motor->vq,motor->vd);
     // }
-    
+    if(motor->target_iq > motor->i_max) motor->target_iq = motor->i_max;
+    if(motor->target_iq < -motor->i_max) motor->target_iq = -motor->i_max;
     motor->vd = pid_calculate(&motor->pid_id, 0, motor->id);//4.2%
     motor->vq = pid_calculate(&motor->pid_iq, motor->target_iq, motor->iq);//4.2%
 

@@ -56,6 +56,7 @@ typedef struct{
 
     //电流环
     float target_iq;
+    float i_max;    // 电流最大值限制
     float iq,id;
     float vq,vd;
     float phase_a_current, phase_b_current, phase_c_current; //三相电流
@@ -77,7 +78,7 @@ typedef struct{
 }  motor;
 
 //foc初始化
-int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t motor_pwm_max);
+int foc_init(motor *motor,foc_interface_t driver,uint8_t pole_pairs,uint16_t motor_pwm_max,float i_max);
 
 //设置电流环PID
 void foc_current_set_pid_param(motor *motor,float scale,float iq_kp,float iq_ki,float id_kp,float id_ki);
