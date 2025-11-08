@@ -100,8 +100,6 @@ static inline vector_t vector_rotate(vector_t a, float rad)
 // 电机句柄
 struct motor
 {
-
-    foc_interface_t driver; // 驱动函数接口
     // 是否已经初始化
     uint8_t init_already;
     // 电机极对数，用来计算电角度，电角度=机械角度*极对数。
@@ -155,25 +153,25 @@ static void foc_motor_set_step(uint8_t pdrv, uint8_t step)
     switch (step)
     {
     case 1:
-        motor->driver.foc_motor_set_phase(motor->motor_pwm_max, 0, 0);
+        foc_driver_set_phase(pdrv,motor->motor_pwm_max, 0, 0);
         break;
     case 2:
-        motor->driver.foc_motor_set_phase(motor->motor_pwm_max, motor->motor_pwm_max, 0);
+        foc_driver_set_phase(pdrv,motor->motor_pwm_max, motor->motor_pwm_max, 0);
         break;
     case 3:
-        motor->driver.foc_motor_set_phase(0, motor->motor_pwm_max, 0);
+        foc_driver_set_phase(pdrv,0, motor->motor_pwm_max, 0);
         break;
     case 4:
-        motor->driver.foc_motor_set_phase(0, motor->motor_pwm_max, motor->motor_pwm_max);
+        foc_driver_set_phase(pdrv,0, motor->motor_pwm_max, motor->motor_pwm_max);
         break;
     case 5:
-        motor->driver.foc_motor_set_phase(0, 0, motor->motor_pwm_max);
+        foc_driver_set_phase(pdrv,0, 0, motor->motor_pwm_max);
         break;
     case 6:
-        motor->driver.foc_motor_set_phase(motor->motor_pwm_max, 0, motor->motor_pwm_max);
+        foc_driver_set_phase(pdrv,motor->motor_pwm_max, 0, motor->motor_pwm_max);
         break;
     default:
-        motor->driver.foc_motor_set_phase(0, 0, 0);
+        foc_driver_set_phase(pdrv,0, 0, 0);
         break;
     }
 }
@@ -218,8 +216,8 @@ static void foc_motor_spwm_control_by_rad(uint8_t pdrv, float size, float rad)
     if (phase_c_pwm > pwm_max)
         phase_c_pwm = pwm_max;
 
-    // foc_debug_printf("PWM OUTPUT angle=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/PI,phase_a_pwm, phase_b_pwm, phase_c_pwm);
-    motor->driver.foc_motor_set_phase((uint16_t)phase_a_pwm, (uint16_t)phase_b_pwm, (uint16_t)phase_c_pwm);
+    // foc_driver_debug_printf(pdrv,"PWM OUTPUT angle=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/PI,phase_a_pwm, phase_b_pwm, phase_c_pwm);
+    foc_driver_set_phase(pdrv,(uint16_t)phase_a_pwm, (uint16_t)phase_b_pwm, (uint16_t)phase_c_pwm);
 }
 
 /// @brief SVPWM控制电机函数，使用最小/最大值注入零序分量的调制方法
@@ -255,8 +253,8 @@ static void foc_motor_svpwm_control(uint8_t pdrv, vector_t v)
         motor->phase_b = motor->motor_pwm_max;
     if (motor->phase_c > motor->motor_pwm_max)
         motor->phase_c = motor->motor_pwm_max;
-    // foc_debug_printf("PWM OUTPUT rad=%.1f,size=%.1f,mid_offset_phase=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/3.1415f,size,mid_offset_phase,motor->phase_a, motor->phase_b, motor->phase_c);
-    motor->driver.foc_motor_set_phase(motor->phase_a, motor->phase_b, motor->phase_c);
+    // foc_driver_debug_printf(pdrv,"PWM OUTPUT rad=%.1f,size=%.1f,mid_offset_phase=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/3.1415f,size,mid_offset_phase,motor->phase_a, motor->phase_b, motor->phase_c);
+    foc_driver_set_phase(pdrv,motor->phase_a, motor->phase_b, motor->phase_c);
 }
 static void foc_motor_spwm_control(uint8_t pdrv, vector_t v)
 {
@@ -312,27 +310,26 @@ static float pid_calculate(pid_param_t *pid, float target, float current)
 static void foc_base_angle_calibration(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->driver.foc_motor_enable(1); // 使能电机驱动
+    foc_driver_motor_enable(pdrv,1); // 使能电机驱动
     foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0);
-    foc_delay_ms(1000);
-    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
-    foc_delay_ms(10);
-    motor->driver.foc_get_mech_angle(&motor->mech_angle_zero);
+    foc_driver_delay_ms(pdrv,1000);
+    foc_driver_get_mech_angle(pdrv,&motor->mech_angle_zero);
+    foc_driver_delay_ms(pdrv,10);
+    foc_driver_get_mech_angle(pdrv,&motor->mech_angle_zero);
 }
 
-int foc_init(uint8_t pdrv, foc_interface_t driver, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max)
+int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max)
 {
     motor_t *motor = &motor_array[pdrv];
     if (pdrv >= MOTOR_COUNT)
         return -EINVAL; // 参数错误
     if (pole_pairs == 0 || motor_pwm_max == 0)
         return -EINVAL;     // 极对数和最大占空比不能为0
-    motor->driver = driver; // 设置驱动函数接口
     motor->pole_pairs = pole_pairs;
     motor->motor_pwm_max = motor_pwm_max;
     motor->i_max = i_max;
-    motor->driver.foc_driver_init();
-    motor->driver.foc_motor_set_phase(0, 0, 0); // 设置初始占空比为0
+    foc_driver_init(pdrv);
+    foc_driver_set_phase(pdrv,0, 0, 0); // 设置初始占空比为0
     foc_base_angle_calibration(pdrv);
     foc_set_mode(pdrv, FOC_MODE_CURRENT); // 设置默认模式为电流模式
     motor->init_already = 1;
@@ -372,7 +369,7 @@ void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_curre
     motor_t *motor = &motor_array[pdrv];
     if (motor->init_already == 0)
         return;                                           // 如果没有初始化，直接返回
-    motor->driver.foc_get_mech_angle(&motor->mech_angle); // 34%
+    foc_driver_get_mech_angle(pdrv,&motor->mech_angle); // 34%
     const float tmp = PI / 180.0f;
     motor->elec_angle_rad = (motor->mech_angle - motor->mech_angle_zero) * motor->pole_pairs * tmp;
     motor->parker_x.x = cosf(motor->elec_angle_rad); // 6%
@@ -387,18 +384,9 @@ void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_curre
 #else
     motor->current_by_clarke = foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current); // 2.6%
 #endif
-    // float alpha=0.5f;
-    // motor->id = motor->id*alpha + (1-alpha)*vector_projection(motor->parker_x, motor->current_by_clarke);
-    // motor->iq = motor->iq*alpha + (1-alpha)*vector_projection(motor->parker_y, motor->current_by_clarke);
     motor->id = vector_projection(motor->parker_x, motor->current_by_clarke); // 4.5%
     motor->iq = vector_projection(motor->parker_y, motor->current_by_clarke); // 4.5%
 
-    // static int print_count=0;
-    // print_count++;
-    // if(print_count>500){  //控制打印频率，频率高很影响速度
-    //     print_count=0;
-    //     foc_debug_printf("%.2f,%.2f,%.2f,%.2f\n", motor->iq, motor->id,motor->vq,motor->vd);
-    // }
     if (motor->target_iq > motor->i_max)
         motor->target_iq = motor->i_max;
     if (motor->target_iq < -motor->i_max)
@@ -441,7 +429,7 @@ void foc_speed_update(uint8_t pdrv, float interval)
     }
     motor->speed = delta / interval * 1000.0f; // 速度单位度每秒
     motor->mech_angle_last = motor->mech_angle;
-    // foc_debug_printf("%.2f\n",motor->speed);
+    // foc_driver_debug_printf(pdrv,"%.2f\n",motor->speed);
     motor->target_iq = pid_calculate(&motor->pid_speed, motor->target_speed, motor->speed);
 }
 /// @brief 设置位置环PID参数，三环(位置->速度->电流)需要设置kp,二环(位置->电流)需要设置kp,ki,kd
@@ -551,28 +539,28 @@ float foc_get_position(uint8_t pdrv)
 void foc_demo_0(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->driver.foc_motor_enable(1);
+    foc_driver_motor_enable(pdrv,1);
     while (1)
     {
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0);
-        foc_delay_ms(1000);
+        foc_driver_delay_ms(pdrv,1000);
     }
 }
 
 void foc_demo_1(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->driver.foc_motor_enable(1);
+    foc_driver_motor_enable(pdrv,1);
     while (1)
     {
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0);
-        foc_delay_ms(1000);
+        foc_driver_delay_ms(pdrv,1000);
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 90);
-        foc_delay_ms(1000);
+        foc_driver_delay_ms(pdrv,1000);
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 180);
-        foc_delay_ms(1000);
+        foc_driver_delay_ms(pdrv,1000);
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 270);
-        foc_delay_ms(1000);
+        foc_driver_delay_ms(pdrv,1000);
     }
 }
 
@@ -582,12 +570,12 @@ void foc_demo_2(uint8_t pdrv)
     motor_t *motor = &motor_array[pdrv];
     int elec_angle = 0;
     foc_base_angle_calibration(pdrv); // 校准初始角度
-    foc_debug_printf("mech_angle_zero=%.2f\n", motor->mech_angle_zero);
+    foc_driver_debug_printf(pdrv,"mech_angle_zero=%.2f\n", motor->mech_angle_zero);
 
     while (1)
     {
-        motor->driver.foc_get_mech_angle(&mech_angle);
-        foc_debug_printf("mech_angle=%.2f\n", mech_angle);
+        foc_driver_get_mech_angle(pdrv,&mech_angle);
+        foc_driver_debug_printf(pdrv,"mech_angle=%.2f\n", mech_angle);
         elec_angle = (mech_angle - motor->mech_angle_zero) * motor->pole_pairs;
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max / 2, elec_angle + 90.0f);
     }
@@ -596,21 +584,21 @@ void foc_demo_2(uint8_t pdrv)
 void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, float *phase_c_current)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->driver.foc_motor_enable(1);
+    foc_driver_motor_enable(pdrv,1);
     while (1)
     {
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0);
-        foc_delay_ms(500);
-        foc_debug_printf("A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
-        foc_delay_ms(500);
+        foc_driver_delay_ms(pdrv,500);
+        foc_driver_debug_printf(pdrv,"A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_delay_ms(pdrv,500);
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 120);
-        foc_delay_ms(500);
-        foc_debug_printf("B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
-        foc_delay_ms(500);
+        foc_driver_delay_ms(pdrv,500);
+        foc_driver_debug_printf(pdrv,"B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_delay_ms(pdrv,500);
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 240);
-        foc_delay_ms(500);
-        foc_debug_printf("C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
-        foc_delay_ms(500);
+        foc_driver_delay_ms(pdrv,500);
+        foc_driver_debug_printf(pdrv,"C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_delay_ms(pdrv,500);
     }
 }
 
@@ -620,10 +608,10 @@ void foc_demo_32(uint8_t pdrv, uint8_t motor_en, float *phase_a_current, float *
     float mech_angle = 0;
     int elec_angle = 0;
     foc_base_angle_calibration(pdrv); // 校准初始角度
-    motor->driver.foc_motor_enable(motor_en);
+    foc_driver_motor_enable(pdrv,motor_en);
     while (1)
     {
-        motor->driver.foc_get_mech_angle(&mech_angle);
+        foc_driver_get_mech_angle(pdrv,&mech_angle);
         elec_angle = (mech_angle - motor->mech_angle_zero) * motor->pole_pairs;
         if (motor_en)
             foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max / 2, elec_angle + 90.0f);
@@ -631,10 +619,10 @@ void foc_demo_32(uint8_t pdrv, uint8_t motor_en, float *phase_a_current, float *
         motor->current_phase_b_filter = motor->current_phase_b_filter * Filter_coefficient + (1 - Filter_coefficient) * (*phase_b_current);
         motor->current_phase_c_filter = motor->current_phase_c_filter * Filter_coefficient + (1 - Filter_coefficient) * (*phase_c_current);
         motor->current_phase_a_filter = -motor->current_phase_b_filter - motor->current_phase_c_filter;
-        foc_debug_printf("%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current,
+        foc_driver_debug_printf(pdrv,"%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current,
                          motor->current_phase_a_filter, motor->current_phase_b_filter, motor->current_phase_c_filter);
 #else
-        foc_debug_printf("%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_debug_printf(pdrv,"%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
 
 #endif
     }
@@ -654,7 +642,7 @@ void foc_demo_4(uint8_t pdrv, float *phase_a_current, float *phase_b_current, fl
 
     while (1)
     {
-        motor->driver.foc_get_mech_angle(&mech_angle);
+        foc_driver_get_mech_angle(pdrv,&mech_angle);
         elec_angle = (mech_angle - motor->mech_angle_zero) * motor->pole_pairs;
         parker_x.x = cosf(elec_angle * PI / 180.0f);
         parker_x.y = sinf(elec_angle * PI / 180.0f);
@@ -667,9 +655,9 @@ void foc_demo_4(uint8_t pdrv, float *phase_a_current, float *phase_b_current, fl
         iq = vector_projection(parker_y, current_vec);
 
         // 显示电角度，电流矢量角度，IQ，ID。正常情况电角度增加时电流矢量角度也增加
-        //  foc_debug_printf("%d,%.1f,%.2f,%.2f\n",elec_angle, current_vec_angle,iq, id);
+        //  foc_driver_debug_printf(pdrv,"%d,%.1f,%.2f,%.2f\n",elec_angle, current_vec_angle,iq, id);
         // 只显示IQ和ID。正常情况转起来是两条直线，堵转时ID=0
-        foc_debug_printf("%.2f,%.2f\n", iq, id);
+        foc_driver_debug_printf(pdrv,"%.2f,%.2f\n", iq, id);
 
         // 固定电压矢量
         voltage_vec.x = 0;

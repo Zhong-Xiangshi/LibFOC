@@ -13,7 +13,7 @@ typedef enum
 } foc_mode_t;
 
 // foc初始化
-int foc_init(uint8_t pdrv, foc_interface_t driver, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max);
+int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max);
 
 // 设置电流环PID
 void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_ki, float id_kp, float id_ki);

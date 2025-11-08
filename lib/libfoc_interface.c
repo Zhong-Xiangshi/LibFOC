@@ -2,15 +2,16 @@
 
 // --------------------------------用户实现 start---------------------------------------------
 
+
 /// @brief 初始化PWM、编码器、电流传感
-/// @param
-void foc_driver_init(void)
+/// @param pdrv 物理电机标识，用以区分不同电机。小于MOTOR_COUNT
+void foc_driver_init(uint8_t pdrv)
 {
 
 }
 /// @brief 电机使能函数
 /// @param enable 1使能，0禁用
-void foc_motor_enable(uint8_t enable)
+void foc_driver_motor_enable(uint8_t pdrv,uint8_t enable)
 {
     if (enable)
     {
@@ -22,41 +23,34 @@ void foc_motor_enable(uint8_t enable)
     }
 }
 
-/// @brief 设置电机三个相PWM波形的占空比，输入范围0~motor->motor_pwm_max
+/// @brief 设置电机三个相PWM波形的占空比，建议PWM频率：20kHZ-30kHZ。输入范围0~motor->motor_pwm_max
 /// @param phase_a
 /// @param phase_b
 /// @param phase_c
-void foc_motor_set_phase(uint16_t phase_a, uint16_t phase_b, uint16_t phase_c)
+void foc_driver_set_phase(uint8_t pdrv,uint16_t phase_a, uint16_t phase_b, uint16_t phase_c)
 {
 
 }
 
 
 /// @brief 获得机械角度。
-/// @param angle 角度，顺时针增加，单位1°
-void foc_get_mech_angle(float *angle)
+/// @param angle 角度，0°-360°，顺时针增加，单位°
+void foc_driver_get_mech_angle(uint8_t pdrv,float *angle)
 {
 
 }
 
-foc_interface_t foc_driver = {
-    .foc_driver_init = foc_driver_init,
-    .foc_motor_set_phase = foc_motor_set_phase,
-    .foc_motor_enable = foc_motor_enable,
-    .foc_get_mech_angle = foc_get_mech_angle,
-};
-
 /// @brief 调试打印
 /// @param fmt
 /// @param
-void foc_debug_printf(const char *const fmt, ...)
+void foc_driver_debug_printf(uint8_t pdrv,const char *const fmt, ...)
 {
 
 }
 
 /// @brief 毫秒延时
 /// @param ms
-void foc_delay_ms(uint32_t ms)
+void foc_driver_delay_ms(uint8_t pdrv,uint32_t ms)
 {
 
 }
