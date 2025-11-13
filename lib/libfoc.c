@@ -7,6 +7,7 @@
 #define PI 3.1415f
 #define SQRT3 1.732f
 #define SQRT3_2 0.866f // sqrt(3)/2
+#define INV_SQRT3 0.5773f    // 1/sqrt(3)
 
 #define MOTOR_COUNT 1
 #define USE_CURRENT_FILTER
@@ -447,8 +448,10 @@ static void foc_motor_spwm_control_by_angle(uint8_t pdrv, float size, float angl
 static inline vector_t foc_get_current_vector(float phase_a, float phase_b, float phase_c)
 {
     vector_t current;
+    // 采用幅值不变的Clarke变换
     current.x = phase_a;
-    current.y = (phase_b - phase_c) * SQRT3_2;
+    // I_beta = (I_b - I_c) / sqrt(3)
+    current.y = (phase_b - phase_c) * INV_SQRT3; 
     return current;
 }
 
@@ -570,10 +573,6 @@ void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_curre
     if(vector_len > 1){
         vd_raw /= vector_len;
         vq_raw /= vector_len;
-    }
-    else if(vector_len<-1){
-        vd_raw /= -vector_len;
-        vq_raw /= -vector_len;
     }
     motor->vd = vd_raw;
     motor->vq = vq_raw;
