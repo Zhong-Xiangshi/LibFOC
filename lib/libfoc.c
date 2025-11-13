@@ -10,6 +10,7 @@
 
 #define MOTOR_COUNT 1
 #define USE_CURRENT_FILTER
+// #define USE_ZERO_SEQUENCE_INJECTION //Zero-Sequence Component Injection
 
 struct vector
 {
@@ -220,41 +221,201 @@ static void foc_motor_spwm_control_by_rad(uint8_t pdrv, float size, float rad)
     foc_driver_set_phase(pdrv,(uint16_t)phase_a_pwm, (uint16_t)phase_b_pwm, (uint16_t)phase_c_pwm);
 }
 
-/// @brief SVPWM控制电机函数，使用最小/最大值注入零序分量的调制方法
-/// @param motor
-/// @param v valpha,vbeta
-static void foc_motor_svpwm_control(uint8_t pdrv, vector_t v)
+
+
+/// @brief 计算扇区函数。从x轴开始逆时针每隔60°增加1
+/// @param v 克拉克坐标系电压合矢量（U_alpha，U_beta）
+/// @return 扇区号 1-6
+static uint8_t calc_sector(vector_t v)
 {
-    motor_t *motor = &motor_array[pdrv];
+    float U_alpha = v.x;
+    float U_beta = v.y;
+    
+    float U1 = U_beta;
+    float U2 = (SQRT3 * U_alpha - U_beta) / 2.0f;
+    float U3 = (-SQRT3 * U_alpha - U_beta) / 2.0f;
+
+    uint8_t sector = 0;
+    if (U1 > 0) sector += 1;
+    if (U2 > 0) sector += 2;
+    if (U3 > 0) sector += 4;
+    
+    // 扇区映射表
+    const uint8_t sector_map[8] = {0, 2, 6, 1, 4, 3, 5, 0}; // N=0,7为非法
+    return sector_map[sector];
+}
+
+//获得扇区二个基向量
+static void get_sector_base_vector(uint8_t sector,vector_t *Va,vector_t *Vb)
+{
+    switch (sector)
+    {
+        case 1:
+            Va->x = 1.0f;
+            Va->y = 0.0f;
+            Vb->x = 0.5f;
+            Vb->y = SQRT3_2;
+            break;
+        case 2:
+            Va->x = 0.5f;
+            Va->y = SQRT3_2;
+            Vb->x = -0.5f;
+            Vb->y = SQRT3_2;
+            break;
+        case 3:
+            Va->x = -0.5f;
+            Va->y = SQRT3_2;
+            Vb->x = -1.0f;
+            Vb->y = 0.0f;
+            break;
+        case 4:
+            Va->x = -1.0f;
+            Va->y = 0.0f;
+            Vb->x = -0.5f;
+            Vb->y = -SQRT3_2;
+            break;
+        case 5:
+            Va->x = -0.5f;
+            Va->y = -SQRT3_2;
+            Vb->x = 0.5f;
+            Vb->y = -SQRT3_2;
+            break;
+        case 6:
+            Va->x = 0.5f;
+            Va->y = -SQRT3_2;
+            Vb->x = 1.0f;
+            Vb->y = 0.0f;
+            break;
+        default:
+            Va->x = 0.0f;
+            Va->y = 0.0f;
+            Vb->x = 0.0f;
+            Vb->y = 0.0f;
+            break;
+    }
+}
+
+//获得扇区二个基向量对应的三相状态编码(ABC)
+static void get_sector_base_vector_code(uint8_t sector,uint8_t *Va_code,uint8_t *Vb_code)
+{
+    switch (sector)
+    {
+        case 1:
+            *Va_code = 4;
+            *Vb_code = 6;
+            // *Va_code = 0b100;
+            // *Vb_code = 0b110;
+            break;
+        case 2:
+            *Va_code = 6;
+            *Vb_code = 2;
+            // *Va_code = 0b110;
+            // *Vb_code = 0b010;
+            break;
+        case 3:
+            *Va_code = 2;
+            *Vb_code = 3;
+            // *Va_code = 0b010;
+            // *Vb_code = 0b011;
+            break;
+        case 4:
+            *Va_code = 3;
+            *Vb_code = 1;
+            // *Va_code = 0b011;
+            // *Vb_code = 0b001;
+            break;
+        case 5:
+            *Va_code = 1;
+            *Vb_code = 5;
+            // *Va_code = 0b001;
+            // *Vb_code = 0b101;
+            break;
+        case 6:
+            *Va_code = 5;
+            *Vb_code = 4;
+            // *Va_code = 0b101;
+            // *Vb_code = 0b100;
+            break;
+        default:
+            *Va_code = 0;
+            *Vb_code = 0;
+            // *Va_code = 0b000;
+            // *Vb_code = 0b000;
+            break;
+    }
+}
+
+/*
+输入一个克拉克坐标系的电压矢量，输出中心对称模式PWM的三个PWM的阈值
+
+1. 先计算合矢量所在的扇区，得到二个扇区基向量
+2. 根据伏秒平衡公式解出T0、Ta、Tb
+3. 计算P-ABC
+*/
+
+/// @brief 输入一个克拉克坐标系的电压矢量，输出中心对称模式PWM的三个PWM的阈值
+/// @param [IN]U 克拉克坐标系的电压矢量(模长范围0-1)
+/// @param [OUT]pwm_a 范围0-1
+/// @param [OUT]pwm_b 范围0-1
+/// @param [OUT]pwm_c 范围0-1
+static void vector2svpwm(vector_t U, float *pwm_a, float *pwm_b, float *pwm_c)
+{
+    const uint8_t sector= calc_sector(U);
+    vector_t Va,Vb; //扇区基向量矢量
+    uint8_t Va_code,Vb_code; //扇区基向量对应的三相状态编码
+    get_sector_base_vector(sector, &Va, &Vb);
+    get_sector_base_vector_code(sector, &Va_code, &Vb_code);
+    
+    float Ta = (U.x*Vb.y - U.y*Vb.x) / (Va.x*Vb.y - Va.y*Vb.x);
+    float Tb = (U.y*Va.x - U.x*Va.y) / (Va.x*Vb.y - Va.y*Vb.x);
+
+    //过调制处理
+    if (Ta + Tb > 1.0f)
+    {
+        float T_sum_inv = 1.0f / (Ta + Tb);
+        Ta *= T_sum_inv;
+        Tb *= T_sum_inv;
+    }
+
+    const float T0 = 1.0f - Ta - Tb;
+    *pwm_a = T0 / 2.0f + ((Va_code & 4) ? Ta : 0) + ((Vb_code & 4) ? Tb : 0);
+    *pwm_b = T0 / 2.0f + ((Va_code & 2) ? Ta : 0) + ((Vb_code & 2) ? Tb : 0);
+    *pwm_c = T0 / 2.0f + ((Va_code & 1) ? Ta : 0) + ((Vb_code & 1) ? Tb : 0);
+
+    if(*pwm_a<0.0f)*pwm_a=0.0f;
+    if(*pwm_b<0.0f)*pwm_b=0.0f;
+    if(*pwm_c<0.0f)*pwm_c=0.0f;
+    if(*pwm_a>1.0f)*pwm_a=1.0f;
+    if(*pwm_b>1.0f)*pwm_b=1.0f;
+    if(*pwm_c>1.0f)*pwm_c=1.0f;
+
+}
+
+/// @brief 输入一个克拉克坐标系的电压矢量，输出中心对称模式PWM的三个PWM的阈值。使用最小/最大值注入零序分量的调制方法
+/// @param [IN]U 克拉克坐标系的电压矢量(模长范围0-1)
+/// @param [OUT]pwm_a 范围0-1
+/// @param [OUT]pwm_b 范围0-1
+/// @param [OUT]pwm_c 范围0-1
+static void vector2svpwm_2(vector_t U, float *pwm_a, float *pwm_b, float *pwm_c)
+{
     float phase_a_tmp, phase_b_tmp, phase_c_tmp;
-    float pwm_mid = motor->motor_pwm_max / 2.0f; // PWM中点
-    v.x *= 1.15f;
-    v.y *= 1.15f;
-    phase_a_tmp = v.x;
-    float tmp = SQRT3_2 * v.y;
-    phase_b_tmp = -0.5f * v.x + tmp;
-    phase_c_tmp = -0.5f * v.x - tmp;
+    float tmp = SQRT3_2 * U.y;
+    phase_a_tmp = U.x;
+    phase_b_tmp = -0.5f * U.x + tmp;
+    phase_c_tmp = -0.5f * U.x - tmp;
     float max_phase = fmaxf(fmaxf(phase_a_tmp, phase_b_tmp), phase_c_tmp);
     float min_phase = fminf(fminf(phase_a_tmp, phase_b_tmp), phase_c_tmp);
     float mid_offset_phase = (max_phase + min_phase) / 2.0f;
-    motor->phase_a = (int)(phase_a_tmp - mid_offset_phase + pwm_mid + 0.5f);
-    motor->phase_b = (int)(phase_b_tmp - mid_offset_phase + pwm_mid + 0.5f);
-    motor->phase_c = (int)(phase_c_tmp - mid_offset_phase + pwm_mid + 0.5f);
+    *pwm_a = phase_a_tmp - mid_offset_phase + 0.5f;
+    *pwm_b = phase_b_tmp - mid_offset_phase + 0.5f;
+    *pwm_c = phase_c_tmp - mid_offset_phase + 0.5f;
 
-    if (motor->phase_a < 0)
-        motor->phase_a = 0;
-    if (motor->phase_b < 0)
-        motor->phase_b = 0;
-    if (motor->phase_c < 0)
-        motor->phase_c = 0;
-    if (motor->phase_a > motor->motor_pwm_max)
-        motor->phase_a = motor->motor_pwm_max;
-    if (motor->phase_b > motor->motor_pwm_max)
-        motor->phase_b = motor->motor_pwm_max;
-    if (motor->phase_c > motor->motor_pwm_max)
-        motor->phase_c = motor->motor_pwm_max;
-    // foc_driver_debug_printf(pdrv,"PWM OUTPUT rad=%.1f,size=%.1f,mid_offset_phase=%.1f,phase_a=%d, phase_b=%d, phase_c=%d\n", rad*180.0f/3.1415f,size,mid_offset_phase,motor->phase_a, motor->phase_b, motor->phase_c);
-    foc_driver_set_phase(pdrv,motor->phase_a, motor->phase_b, motor->phase_c);
+    if(*pwm_a<0.0f)*pwm_a=0.0f;
+    if(*pwm_b<0.0f)*pwm_b=0.0f;
+    if(*pwm_c<0.0f)*pwm_c=0.0f;
+    if(*pwm_a>1.0f)*pwm_a=1.0f;
+    if(*pwm_b>1.0f)*pwm_b=1.0f;
+    if(*pwm_c>1.0f)*pwm_c=1.0f;
 }
 static void foc_motor_spwm_control(uint8_t pdrv, vector_t v)
 {
@@ -307,18 +468,21 @@ static float pid_calculate(pid_param_t *pid, float target, float current)
 }
 
 // 校准初始角度
-static void foc_base_angle_calibration(uint8_t pdrv)
+static void foc_base_angle_calibration(uint8_t pdrv,uint16_t angle_calibration_pwm)
 {
     motor_t *motor = &motor_array[pdrv];
+    foc_driver_motor_enable(pdrv,0);
+    foc_motor_spwm_control_by_angle(pdrv, angle_calibration_pwm, 0);
+    foc_driver_delay_ms(pdrv,100);
     foc_driver_motor_enable(pdrv,1); // 使能电机驱动
-    foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0);
-    foc_driver_delay_ms(pdrv,1000);
+
+    foc_driver_delay_ms(pdrv,3000);
     foc_driver_get_mech_angle(pdrv,&motor->mech_angle_zero);
     foc_driver_delay_ms(pdrv,10);
     foc_driver_get_mech_angle(pdrv,&motor->mech_angle_zero);
 }
 
-int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max)
+int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max, uint16_t angle_calibration_pwm)
 {
     motor_t *motor = &motor_array[pdrv];
     if (pdrv >= MOTOR_COUNT)
@@ -328,9 +492,10 @@ int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_m
     motor->pole_pairs = pole_pairs;
     motor->motor_pwm_max = motor_pwm_max;
     motor->i_max = i_max;
+    motor->init_already = 0;
     foc_driver_init(pdrv);
     foc_driver_set_phase(pdrv,0, 0, 0); // 设置初始占空比为0
-    foc_base_angle_calibration(pdrv);
+    foc_base_angle_calibration(pdrv,angle_calibration_pwm);
     foc_set_mode(pdrv, FOC_MODE_CURRENT); // 设置默认模式为电流模式
     motor->init_already = 1;
     return 0;
@@ -350,16 +515,16 @@ void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_
     motor->pid_iq.scale = scale;
     motor->pid_iq.kp = iq_kp;
     motor->pid_iq.ki = iq_ki;
-    motor->pid_iq.i_max = motor->motor_pwm_max;
-    motor->pid_iq.i_min = -motor->motor_pwm_max;
+    motor->pid_iq.i_max = 1;
+    motor->pid_iq.i_min = -1;
     motor->pid_iq.i = 0;
     motor->pid_iq.alpha = 0;
 
     motor->pid_id.scale = scale;
     motor->pid_id.kp = id_kp;
     motor->pid_id.ki = id_ki;
-    motor->pid_id.i_max = motor->motor_pwm_max;
-    motor->pid_id.i_min = -motor->motor_pwm_max;
+    motor->pid_id.i_max = 1;
+    motor->pid_id.i_min = -1;
     motor->pid_id.i = 0;
     motor->pid_id.alpha = 0;
 }
@@ -391,10 +556,36 @@ void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_curre
         motor->target_iq = motor->i_max;
     if (motor->target_iq < -motor->i_max)
         motor->target_iq = -motor->i_max;
-    motor->vd = pid_calculate(&motor->pid_id, 0, motor->id);                // 4.2%
-    motor->vq = pid_calculate(&motor->pid_iq, motor->target_iq, motor->iq); // 4.2%
 
-    foc_motor_svpwm_control(pdrv, vector_add(vector_multiply(motor->parker_x, motor->vd), vector_multiply(motor->parker_y, motor->vq))); // 25%
+    float vd_raw = pid_calculate(&motor->pid_id, 0, motor->id);                // 4.2%
+    float vq_raw = pid_calculate(&motor->pid_iq, motor->target_iq, motor->iq); // 4.2%
+    vector_t v_raw={vd_raw,vq_raw};
+    float vector_len = vector_length(v_raw);
+    //缩放到-1到1之间
+    if(vector_len > 1){
+        vd_raw /= vector_len;
+        vq_raw /= vector_len;
+    }
+    else if(vector_len<-1){
+        vd_raw /= -vector_len;
+        vq_raw /= -vector_len;
+    }
+    motor->vd = vd_raw;
+    motor->vq = vq_raw;
+
+    vector_t out_voltage_by_parker=vector_add(vector_multiply(motor->parker_x, motor->vd), vector_multiply(motor->parker_y, motor->vq));
+
+    float pwm_a, pwm_b, pwm_c;
+#ifndef USE_ZERO_SEQUENCE_INJECTION 
+    vector2svpwm(out_voltage_by_parker, &pwm_a, &pwm_b, &pwm_c);
+#else
+    vector2svpwm_2(out_voltage_by_parker, &pwm_a, &pwm_b, &pwm_c);
+#endif
+    motor->phase_a = (int)(pwm_a * motor->motor_pwm_max + 0.5f);
+    motor->phase_b = (int)(pwm_b * motor->motor_pwm_max + 0.5f);
+    motor->phase_c = (int)(pwm_c * motor->motor_pwm_max + 0.5f);
+    foc_driver_set_phase(pdrv,motor->phase_a, motor->phase_b, motor->phase_c);
+
 }
 void foc_speed_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float i_max)
 {
@@ -564,12 +755,13 @@ void foc_demo_1(uint8_t pdrv)
     }
 }
 
-float mech_angle = 0;
-void foc_demo_2(uint8_t pdrv)
+
+void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm)
 {
     motor_t *motor = &motor_array[pdrv];
+    float mech_angle = 0;
     int elec_angle = 0;
-    foc_base_angle_calibration(pdrv); // 校准初始角度
+    foc_base_angle_calibration(pdrv,angle_calibration_pwm); // 校准初始角度
     foc_driver_debug_printf(pdrv,"mech_angle_zero=%.2f\n", motor->mech_angle_zero);
 
     while (1)
@@ -602,12 +794,12 @@ void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, f
     }
 }
 
-void foc_demo_32(uint8_t pdrv, uint8_t motor_en, float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient)
+void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient)
 {
     motor_t *motor = &motor_array[pdrv];
     float mech_angle = 0;
     int elec_angle = 0;
-    foc_base_angle_calibration(pdrv); // 校准初始角度
+    foc_base_angle_calibration(pdrv,angle_calibration_pwm); // 校准初始角度
     foc_driver_motor_enable(pdrv,motor_en);
     while (1)
     {
@@ -628,7 +820,7 @@ void foc_demo_32(uint8_t pdrv, uint8_t motor_en, float *phase_a_current, float *
     }
 }
 
-void foc_demo_4(uint8_t pdrv, float *phase_a_current, float *phase_b_current, float *phase_c_current)
+void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm, float *phase_a_current, float *phase_b_current, float *phase_c_current)
 {
     motor_t *motor = &motor_array[pdrv];
     float mech_angle = 0;
@@ -638,7 +830,7 @@ void foc_demo_4(uint8_t pdrv, float *phase_a_current, float *phase_b_current, fl
     vector_t current_vec;
     vector_t voltage_vec;
     float current_vec_angle = 0;
-    foc_base_angle_calibration(pdrv); // 校准初始角度
+    foc_base_angle_calibration(pdrv,angle_calibration_pwm); // 校准初始角度
 
     while (1)
     {

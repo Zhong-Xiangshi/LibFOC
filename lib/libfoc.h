@@ -12,12 +12,25 @@ typedef enum
     FOC_MODE_MAX
 } foc_mode_t;
 
-// foc初始化
-int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max);
+
+/// @brief foc初始化
+/// @param pdrv 电机编号
+/// @param pole_pairs 极对数
+/// @param motor_pwm_max 最大PWM输出值
+/// @param i_max 最大目标电流(A)
+/// @param angle_calibration_pwm 角度校准时的PWM值。注意校准时相当于堵转，请根据电机情况设置合适的值，过大会烧坏电机或触发过流保护
+/// @return 成功返回0
+int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max, uint16_t angle_calibration_pwm);
 
 // 设置电流环PID
 void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_ki, float id_kp, float id_ki);
-// 电流环更新，参考调用频率4khz
+
+/// @brief 电流环更新。建议调用频率=最高机械频率*极对数*36（假设每间隔10°执行一次）
+/// @param pdrv 电机编号
+/// @param phase_a_current 相电流A
+/// @param phase_b_current 相电流B
+/// @param phase_c_current 相电流C
+/// @param Filter_coefficient 滤波系数，范围0-1，值越大滤波越明显，需要启用USE_CURRENT_FILTER才有效
 void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_current, float phase_c_current, float Filter_coefficient);
 
 // 设置速度环PID
@@ -60,7 +73,7 @@ void foc_demo_1(uint8_t pdrv);
 /*
     以90°固定电压矢量连续顺时针转动。顺时针角度增加。极对数不对则无法连续转动或者明显周期晃动。角度通过LOG打印查看。只依赖角度传感器、极对数。
 */
-void foc_demo_2(uint8_t pdrv);
+void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm);
 
 /*
     使用方法：请开启中断读取三相电流值，将电流值指针传入此函数，后面几个函数也做相同操作。
@@ -71,12 +84,12 @@ void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, f
 /*
     以90°固定电压矢量控制电机顺时针转动,LOG打印三相电流。用手捏住电机缓慢转动可以看到交流变化波形。依赖角度传感器、电流传感器、极对数。
 */
-void foc_demo_32(uint8_t pdrv, uint8_t motor_en, float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient);
+void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient);
 
 /*
     以90°固定电压矢量控制电机，显示IQ和ID电流。正常情况堵转ID接近0。依赖角度传感器、电流传感器、极对数。
     这个如果ok就可以直接调用更新电流环函数开始调PID了
 */
-void foc_demo_4(uint8_t pdrv, float *phase_a_current, float *phase_b_current, float *phase_c_current);
+void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm, float *phase_a_current, float *phase_b_current, float *phase_c_current);
 
 #endif
