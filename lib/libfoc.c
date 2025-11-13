@@ -360,6 +360,11 @@ static void get_sector_base_vector_code(uint8_t sector,uint8_t *Va_code,uint8_t 
 /// @param [OUT]pwm_c 范围0-1
 static void vector2svpwm(vector_t U, float *pwm_a, float *pwm_b, float *pwm_c)
 {
+
+    // 将输入的U，从外接圆归一化(模长0-1) 变换到 以2/3*Udc为基准的物理坐标系
+    U.x *= (2.0f / 3.0f);
+    U.y *= (2.0f / 3.0f);
+
     const uint8_t sector= calc_sector(U);
     vector_t Va,Vb; //扇区基向量矢量
     uint8_t Va_code,Vb_code; //扇区基向量对应的三相状态编码
