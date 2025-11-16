@@ -27,11 +27,8 @@ void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_
 
 /// @brief 电流环更新。建议调用频率=最高机械频率*极对数*36（假设每间隔10°执行一次）
 /// @param pdrv 电机编号
-/// @param phase_a_current 相电流A
-/// @param phase_b_current 相电流B
-/// @param phase_c_current 相电流C
-/// @param Filter_coefficient 滤波系数，范围0-1，值越大滤波越明显，需要启用USE_CURRENT_FILTER才有效
-void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_current, float phase_c_current, float Filter_coefficient);
+/// @param Filter_coefficient 电流滤波系数，范围0-1，值越大滤波越明显，需要启用USE_CURRENT_FILTER才有效
+void foc_current_update(uint8_t pdrv,float Filter_coefficient);
 
 
 /// @brief 设置速度环PI参数
@@ -91,17 +88,17 @@ void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm);
     使用方法：请开启中断读取三相电流值，将电流值指针传入此函数，后面几个函数也做相同操作。
     用于调试电流方向。每隔1s顺时针通电ABC三相,并LOG打印显示三相电流。正常情况：A通电A相电流正，B通电B相电流正，C通电C相电流正。错误请修改驱动对应好。只依赖电流传感器。
 */
-void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, float *phase_c_current);
+void foc_demo_31(uint8_t pdrv);
 
 /*
     以90°固定电压矢量控制电机顺时针转动,LOG打印三相电流。用手捏住电机缓慢转动可以看到交流变化波形。依赖角度传感器、电流传感器、极对数。
 */
-void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient);
+void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float Filter_coefficient);
 
 /*
     以90°固定电压矢量控制电机，显示IQ和ID电流。正常情况堵转ID接近0。依赖角度传感器、电流传感器、极对数。
     这个如果ok就可以直接调用更新电流环函数开始调PID了
 */
-void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm, float *phase_a_current, float *phase_b_current, float *phase_c_current);
+void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm);
 
 #endif

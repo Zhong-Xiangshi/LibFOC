@@ -545,7 +545,7 @@ void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_
     motor->pid_id.alpha = 0;
 }
 
-void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_current, float phase_c_current, float Filter_coefficient)
+void foc_current_update(uint8_t pdrv,float Filter_coefficient)
 {
     motor_t *motor = &motor_array[pdrv];
     if (motor->init_already == 0)
@@ -558,16 +558,14 @@ void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_curre
     motor->parker_y.x = -motor->parker_x.y;
     motor->parker_y.y = motor->parker_x.x;
 
-    motor->phase_a_current=phase_a_current;
-    motor->phase_b_current=phase_b_current;
-    motor->phase_c_current=phase_c_current;
+    foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
 #ifdef USE_CURRENT_FILTER
-    motor->current_phase_b_filter = motor->current_phase_b_filter * Filter_coefficient + (1 - Filter_coefficient) * phase_b_current;
-    motor->current_phase_c_filter = motor->current_phase_c_filter * Filter_coefficient + (1 - Filter_coefficient) * phase_c_current;
+    motor->current_phase_b_filter = motor->current_phase_b_filter * Filter_coefficient + (1 - Filter_coefficient) * motor->phase_b_current;
+    motor->current_phase_c_filter = motor->current_phase_c_filter * Filter_coefficient + (1 - Filter_coefficient) * motor->phase_c_current;
     motor->current_phase_a_filter = -motor->current_phase_b_filter - motor->current_phase_c_filter;
     motor->current_by_clarke = foc_get_current_vector(motor->current_phase_a_filter, motor->current_phase_b_filter, motor->current_phase_c_filter); // 2.6%
 #else
-    motor->current_by_clarke = foc_get_current_vector(phase_a_current, phase_b_current, phase_c_current); // 2.6%
+    motor->current_by_clarke = foc_get_current_vector(motor->phase_a_current, motor->phase_b_current, motor->phase_c_current); // 2.6%
 #endif
     motor->id = vector_projection(motor->parker_x, motor->current_by_clarke); // 4.5%
     motor->iq = vector_projection(motor->parker_y, motor->current_by_clarke); // 4.5%
@@ -826,7 +824,7 @@ void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm)
     }
 }
 
-void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, float *phase_c_current)
+void foc_demo_31(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
     foc_driver_motor_enable(pdrv,1);
@@ -834,20 +832,25 @@ void foc_demo_31(uint8_t pdrv, float *phase_a_current, float *phase_b_current, f
     {
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 0,motor->motor_pwm_max);
         foc_driver_delay_ms(pdrv,500);
-        foc_driver_debug_printf(pdrv,"A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
+        foc_driver_debug_printf(pdrv,"A---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);
         foc_driver_delay_ms(pdrv,500);
+
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 120,motor->motor_pwm_max);
         foc_driver_delay_ms(pdrv,500);
-        foc_driver_debug_printf(pdrv,"B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
+        foc_driver_debug_printf(pdrv,"B---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n",  motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);
         foc_driver_delay_ms(pdrv,500);
+
         foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max, 240,motor->motor_pwm_max);
         foc_driver_delay_ms(pdrv,500);
-        foc_driver_debug_printf(pdrv,"C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
+        foc_driver_debug_printf(pdrv,"C---phase_a_current=%.2f, phase_b_current=%.2f, phase_c_current=%.2f\n",  motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);
         foc_driver_delay_ms(pdrv,500);
     }
 }
 
-void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float *phase_a_current, float *phase_b_current, float *phase_c_current, float Filter_coefficient)
+void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float Filter_coefficient)
 {
     motor_t *motor = &motor_array[pdrv];
     float mech_angle = 0;
@@ -860,20 +863,21 @@ void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm 
         elec_angle = (mech_angle - motor->mech_angle_zero) * motor->pole_pairs;
         if (motor_en)
             foc_motor_spwm_control_by_angle(pdrv, motor->motor_pwm_max / 2, elec_angle + 90.0f,motor->motor_pwm_max);
+        foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
 #ifdef USE_CURRENT_FILTER
-        motor->current_phase_b_filter = motor->current_phase_b_filter * Filter_coefficient + (1 - Filter_coefficient) * (*phase_b_current);
-        motor->current_phase_c_filter = motor->current_phase_c_filter * Filter_coefficient + (1 - Filter_coefficient) * (*phase_c_current);
+        motor->current_phase_b_filter = motor->current_phase_b_filter * Filter_coefficient + (1 - Filter_coefficient) * (motor->phase_b_current);
+        motor->current_phase_c_filter = motor->current_phase_c_filter * Filter_coefficient + (1 - Filter_coefficient) * (motor->phase_c_current);
         motor->current_phase_a_filter = -motor->current_phase_b_filter - motor->current_phase_c_filter;
         foc_driver_debug_printf(pdrv,"%.2f,%.2f,%.2f,%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current,
                          motor->current_phase_a_filter, motor->current_phase_b_filter, motor->current_phase_c_filter);
 #else
-        foc_driver_debug_printf(pdrv,"%.2f,%.2f,%.2f\n", *phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_debug_printf(pdrv,"%.2f,%.2f,%.2f\n", motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);
 
 #endif
     }
 }
 
-void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm, float *phase_a_current, float *phase_b_current, float *phase_c_current)
+void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm)
 {
     motor_t *motor = &motor_array[pdrv];
     float mech_angle = 0;
@@ -894,7 +898,8 @@ void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm, float *phase_a_cu
         parker_y.x = -parker_x.y;
         parker_y.y = parker_x.x;
 
-        current_vec = foc_get_current_vector(*phase_a_current, *phase_b_current, *phase_c_current);
+        foc_driver_get_phase_current(pdrv,&motor->phase_a_current,&motor->phase_b_current,&motor->phase_c_current);
+        current_vec = foc_get_current_vector(motor->phase_a_current, motor->phase_b_current, motor->phase_c_current);
         current_vec_angle = atan2f(current_vec.y, current_vec.x) * 180.0f / PI;
         id = vector_projection(parker_x, current_vec);
         iq = vector_projection(parker_y, current_vec);

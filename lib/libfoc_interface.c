@@ -40,6 +40,15 @@ void foc_driver_get_mech_angle(uint8_t pdrv,float *angle)
 
 }
 
+/// @brief 获得相电流A、B、C，单位安培。建议在零矢量阶段采样。
+/// @param pdrv 电机编号
+/// @param phase_cur_a 
+/// @param phase_cur_b 
+/// @param phase_cur_c 
+void foc_driver_get_phase_current(uint8_t pdrv,float *phase_cur_a,float *phase_cur_b,float *phase_cur_c){
+
+}
+
 /// @brief 调试打印
 /// @param fmt
 /// @param
