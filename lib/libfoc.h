@@ -33,21 +33,30 @@ void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_
 /// @param Filter_coefficient 滤波系数，范围0-1，值越大滤波越明显，需要启用USE_CURRENT_FILTER才有效
 void foc_current_update(uint8_t pdrv, float phase_a_current, float phase_b_current, float phase_c_current, float Filter_coefficient);
 
-// 设置速度环PID
+
+/// @brief 设置速度环PI参数
+/// @param pdrv 电机编号
+/// @param scale 输出缩放，1为不缩放
+/// @param alpha 输入低通滤波，0-1，0为不使用
+/// @param kp 
+/// @param ki 
+/// @param i_max 积分限幅，积分最大值
 void foc_speed_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float i_max);
-// 速度环更新，参考调用频率1khz
-void foc_speed_update(uint8_t pdrv, float interval);
+// 计算速度和速度环更新，参考调用频率4khz
+void foc_speed_update(uint8_t pdrv, uint32_t interval_us);
 
 // 设置位置环PID
 void foc_position_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float kd, float imax);
-// 位置环更新，参考调用频率1khz
+// 计算位置和位置环更新，参考调用频率1khz
 void foc_position_update(uint8_t pdrv);     // 三环版本
 void foc_position_update_two(uint8_t pdrv); // 双环版本
 
 // 设置控制模式
 void foc_set_mode(uint8_t pdrv, foc_mode_t mode);
+foc_mode_t foc_get_mode(uint8_t pdrv);
 // 设置电机控制目标值
 void foc_set_target(uint8_t pdrv, float target);
+float foc_get_target(uint8_t pdrv);
 
 // 获取电机力矩（IQ，和力矩成正比，需要手动乘以常数）
 float foc_get_torque(uint8_t pdrv);
@@ -56,6 +65,9 @@ float foc_get_speed(uint8_t pdrv);
 // 获取电机位置
 float foc_get_position(uint8_t pdrv);
 
+void foc_get_iq_id(uint8_t pdrv, float *iq, float *id);
+void foc_get_vq_vd(uint8_t pdrv, float *vq, float *vd);
+void foc_get_phase_current(uint8_t pdrv, float *cur_a, float *cur_b, float *cur_c);
 /*
     ====================================调试函数=====================================
 
@@ -71,7 +83,7 @@ void foc_demo_0(uint8_t pdrv);
 void foc_demo_1(uint8_t pdrv);
 
 /*
-    以90°固定电压矢量连续顺时针转动。顺时针角度增加。极对数不对则无法连续转动或者明显周期晃动。角度通过LOG打印查看。只依赖角度传感器、极对数。
+    以90°固定电压矢量连续顺时针转动，以pwm_max输出。顺时针角度增加。极对数不对则无法连续转动或者明显周期晃动。角度通过LOG打印查看。只依赖角度传感器、极对数。
 */
 void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm);
 
