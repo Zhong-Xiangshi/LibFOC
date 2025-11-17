@@ -121,24 +121,23 @@ struct motor
 
     // 电流环
     float target_iq;
-    float i_max; // 电流最大值限制
     float iq, id;
     float vq, vd;
+    pid_param_t pid_iq, pid_id;
     float current_phase_a_filter;
     float current_phase_b_filter;
     float current_phase_c_filter;
     float phase_a_current;
     float phase_b_current;
     float phase_c_current;
-    
-
-    pid_param_t pid_iq, pid_id;
+    float i_max; // 电流最大值限制
     vector_t parker_x, parker_y;
     vector_t current_by_clarke; // 克拉克坐标系电流矢量
 
     // 速度环
     float target_speed;
     float speed;
+    float speed_LPF_alpha;
     pid_param_t pid_speed;
 
     // 位置环
@@ -601,17 +600,18 @@ void foc_current_update(uint8_t pdrv,float Filter_coefficient)
     foc_driver_set_phase(pdrv,motor->phase_a, motor->phase_b, motor->phase_c);
 
 }
-void foc_speed_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float i_max)
+void foc_speed_set_pid_param(uint8_t pdrv, float scale, float LPF_alpha, float kp, float ki,float kd, float i_max)
 {
     motor_t *motor = &motor_array[pdrv];
     motor->pid_speed.scale = scale;
-    motor->pid_speed.alpha = alpha; // 低通滤波系数
+    motor->pid_speed.alpha = 0; // 低通滤波系数
     motor->pid_speed.kp = kp;
     motor->pid_speed.ki = ki;
-    motor->pid_speed.kd = 0;
+    motor->pid_speed.kd = kd;
     motor->pid_speed.i_max = i_max;
     motor->pid_speed.i_min = -i_max;
     motor->pid_speed.i = 0;
+    motor->speed_LPF_alpha=LPF_alpha;
 }
 /// @brief 速度环更新
 /// @param motor
@@ -631,7 +631,8 @@ void foc_speed_update(uint8_t pdrv, uint32_t interval_us)
     {
         delta += 360.0f;
     }
-    motor->speed = delta / interval_us*1000000; // 速度单位度每秒
+    float raw_speed=delta / interval_us*1000000; // 速度单位度每秒
+    motor->speed = raw_speed * motor->speed_LPF_alpha + (1 - motor->speed_LPF_alpha) * motor->speed;
     motor->mech_angle_last = motor->mech_angle;
     // foc_driver_debug_printf(pdrv,"%.2f\n",motor->speed);
     if (!((motor->mode == FOC_MODE_SPEED) || (motor->mode == FOC_MODE_POSITION)))
@@ -706,37 +707,35 @@ void foc_position_update_two(uint8_t pdrv)
     motor->target_iq = pid_calculate(&motor->pid_position, motor->target_position, motor->position);
 }
 
-void foc_set_target(uint8_t pdrv, float target)
+void foc_set_target_iq(uint8_t pdrv, float target)
 {
     motor_t *motor = &motor_array[pdrv];
-    if (motor->mode == FOC_MODE_CURRENT)
-    {
-        motor->target_iq = target; // 设置电流目标值
-    }
-    else if (motor->mode == FOC_MODE_SPEED)
-    {
-        motor->target_speed = target; // 设置速度目标值
-    }
-    else if (motor->mode == FOC_MODE_POSITION || motor->mode == FOC_MODE_POSITION_TWO)
-    {
-        motor->target_position = target; // 设置位置目标值
-    }
+    motor->target_iq=target;
 }
-float foc_get_target(uint8_t pdrv){
+float foc_get_target_iq(uint8_t pdrv)
+{
     motor_t *motor = &motor_array[pdrv];
-    if (motor->mode == FOC_MODE_CURRENT)
-    {
-        return motor->target_iq; // 获取电流目标值
-    }
-    else if (motor->mode == FOC_MODE_SPEED)
-    {
-        return motor->target_speed; // 获取速度目标值
-    }
-    else if (motor->mode == FOC_MODE_POSITION || motor->mode == FOC_MODE_POSITION_TWO)
-    {
-        return motor->target_position; // 获取位置目标值
-    }
-    return 0.0f;
+    return motor->target_iq;
+}
+void foc_set_target_velocity(uint8_t pdrv, float target)
+{
+    motor_t *motor = &motor_array[pdrv];
+    motor->target_speed=target;
+}
+float foc_get_target_velocity(uint8_t pdrv)
+{
+    motor_t *motor = &motor_array[pdrv];
+    return motor->target_speed;
+}
+void foc_set_target_position(uint8_t pdrv, float target)
+{
+    motor_t *motor = &motor_array[pdrv];
+    motor->target_position=target;
+}
+float foc_get_target_position(uint8_t pdrv)
+{
+    motor_t *motor = &motor_array[pdrv];
+    return motor->target_position;
 }
 
 
@@ -747,7 +746,7 @@ float foc_get_torque(uint8_t pdrv)
     return motor->iq; // 扭矩= 电流 * 常数
 }
 
-float foc_get_speed(uint8_t pdrv)
+float foc_get_velocity(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
     return motor->speed;

@@ -34,11 +34,12 @@ void foc_current_update(uint8_t pdrv,float Filter_coefficient);
 /// @brief 设置速度环PI参数
 /// @param pdrv 电机编号
 /// @param scale 输出缩放，1为不缩放
-/// @param alpha 输入低通滤波，0-1，0为不使用
+/// @param LPF_alpha 速度低通滤波，0-1，1为不使用。公式alpha = 2 * PI * dt * Fc，其中Fc为截止频率,dt为执行间隔（单位s）
 /// @param kp 
 /// @param ki 
+/// @param kd 
 /// @param i_max 积分限幅，积分最大值
-void foc_speed_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float i_max);
+void foc_speed_set_pid_param(uint8_t pdrv, float scale, float LPF_alpha, float kp, float ki,float kd, float i_max);
 // 计算速度和速度环更新，参考调用频率4khz
 void foc_speed_update(uint8_t pdrv, uint32_t interval_us);
 
@@ -51,15 +52,18 @@ void foc_position_update_two(uint8_t pdrv); // 双环版本
 // 设置控制模式
 void foc_set_mode(uint8_t pdrv, foc_mode_t mode);
 foc_mode_t foc_get_mode(uint8_t pdrv);
-// 设置电机控制目标值
-void foc_set_target(uint8_t pdrv, float target);
-float foc_get_target(uint8_t pdrv);
+// 获取和设置目标值
+void foc_set_target_iq(uint8_t pdrv, float target);
+void foc_set_target_velocity(uint8_t pdrv, float target);
+void foc_set_target_position(uint8_t pdrv, float target);
+float foc_get_target_iq(uint8_t pdrv);
+float foc_get_target_velocity(uint8_t pdrv);
+float foc_get_target_position(uint8_t pdrv);
 
-// 获取电机力矩（IQ，和力矩成正比，需要手动乘以常数）
+
+// 获取当前值
 float foc_get_torque(uint8_t pdrv);
-// 获取电机速度
-float foc_get_speed(uint8_t pdrv);
-// 获取电机位置
+float foc_get_velocity(uint8_t pdrv);
 float foc_get_position(uint8_t pdrv);
 
 void foc_get_iq_id(uint8_t pdrv, float *iq, float *id);
