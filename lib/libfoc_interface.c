@@ -23,11 +23,11 @@ void foc_driver_motor_enable(uint8_t pdrv,uint8_t enable)
     }
 }
 
-/// @brief 设置电机三个相PWM波形的占空比，建议PWM频率：20kHZ-30kHZ。输入范围0~motor->motor_pwm_max
+/// @brief 设置电机三个相PWM波形的占空比(0-1)。
 /// @param phase_a
 /// @param phase_b
 /// @param phase_c
-void foc_driver_set_phase(uint8_t pdrv,uint16_t phase_a, uint16_t phase_b, uint16_t phase_c)
+void foc_driver_set_phase(uint8_t pdrv,float phase_a, float phase_b, float phase_c)
 {
 
 }
@@ -40,7 +40,7 @@ void foc_driver_get_mech_angle(uint8_t pdrv,float *angle)
 
 }
 
-/// @brief 获得相电流A、B、C，单位安培。建议在零矢量阶段采样。
+/// @brief 获得相电流A、B、C，单位安培。请在零矢量阶段采样。
 /// @param pdrv 电机编号
 /// @param phase_cur_a 
 /// @param phase_cur_b 

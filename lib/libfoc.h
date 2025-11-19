@@ -16,11 +16,11 @@ typedef enum
 /// @brief foc初始化
 /// @param pdrv 电机编号
 /// @param pole_pairs 极对数
-/// @param motor_pwm_max 最大PWM输出值
+/// @param motor_pwm_max 最大PWM百分比(0-1)
 /// @param i_max 最大目标电流(A)
-/// @param angle_calibration_pwm 角度校准时的PWM值。注意校准时相当于堵转，请根据电机情况设置合适的值，过大会烧坏电机或触发过流保护
+/// @param angle_calibration_pwm 角度校准时的PWM输出百分比(0-1,1=motor_pwm_max)。注意校准时相当于堵转，请根据电机情况设置合适的值，过大会烧坏电机或触发过流保护
 /// @return 成功返回0
-int foc_init(uint8_t pdrv, uint8_t pole_pairs, uint16_t motor_pwm_max, float i_max, uint16_t angle_calibration_pwm);
+int foc_init(uint8_t pdrv, uint8_t pole_pairs, float motor_pwm_max, float i_max, float angle_calibration_pwm);
 
 // 设置电流环PID
 void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_ki, float id_kp, float id_ki);
@@ -86,23 +86,24 @@ void foc_demo_1(uint8_t pdrv);
 /*
     以90°固定电压矢量连续顺时针转动，以pwm_max输出。顺时针角度增加。极对数不对则无法连续转动或者明显周期晃动。角度通过LOG打印查看。只依赖角度传感器、极对数。
 */
-void foc_demo_2(uint8_t pdrv,uint16_t angle_calibration_pwm);
+void foc_demo_2(uint8_t pdrv);
 
 /*
-    使用方法：请开启中断读取三相电流值，将电流值指针传入此函数，后面几个函数也做相同操作。
-    用于调试电流方向。每隔1s顺时针通电ABC三相,并LOG打印显示三相电流。正常情况：A通电A相电流正，B通电B相电流正，C通电C相电流正。错误请修改驱动对应好。只依赖电流传感器。
+    每隔1s顺时针通电ABC三相,以pwm_max输出,并LOG打印显示三相电流。用于调试电流方向。正常情况：A通电A相电流正，B通电B相电流正，C通电C相电流正。错误请修改驱动对应好。只依赖电流传感器。
 */
 void foc_demo_31(uint8_t pdrv);
 
 /*
-    以90°固定电压矢量控制电机顺时针转动,LOG打印三相电流。用手捏住电机缓慢转动可以看到交流变化波形。依赖角度传感器、电流传感器、极对数。
+    以90°固定电压矢量控制电机顺时针转动,以pwm_max输出,LOG打印三相电流。用手捏住电机缓慢转动可以看到交流变化波形。依赖角度传感器、电流传感器、极对数。
 */
-void foc_demo_32(uint8_t pdrv, uint8_t motor_en, uint16_t angle_calibration_pwm , float Filter_coefficient);
+void foc_demo_32(uint8_t pdrv, uint8_t motor_en);
 
 /*
-    以90°固定电压矢量控制电机，显示IQ和ID电流。正常情况堵转ID接近0。依赖角度传感器、电流传感器、极对数。
+    以90°固定电压矢量控制电机,以pwm_max输出,显示IQ和ID电流。正常情况堵转ID接近0。依赖角度传感器、电流传感器、极对数。
     这个如果ok就可以直接调用更新电流环函数开始调PID了
 */
-void foc_demo_4(uint8_t pdrv,  uint16_t angle_calibration_pwm);
+void foc_demo_4(uint8_t pdrv);
+
+void foc_demo_5(uint8_t pdrv);
 
 #endif
