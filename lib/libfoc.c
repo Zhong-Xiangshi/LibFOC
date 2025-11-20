@@ -20,22 +20,7 @@ struct vector
 };
 typedef struct vector vector_t;
 
-struct pid_param
-{
-    // 缩放倍数
-    float scale;
-    float input; // 输入值
-    float alpha; // 低通滤波系数
-    float kp;
-    float ki;
-    float kd;
-    float i_max; // 积分限幅
-    float i_min; // 积分限幅
-    float error;
-    float i;
-    float last_error;
-};
-typedef struct pid_param pid_param_t;
+
 
 /// @brief 向量相加
 /// @param a
@@ -123,7 +108,7 @@ struct motor
     float target_iq;
     float iq, id;
     float vq, vd;
-    pid_param_t pid_iq, pid_id;
+    pid_t pid_iq, pid_id;
     float current_phase_a_filter;
     float current_phase_b_filter;
     float current_phase_c_filter;
@@ -138,13 +123,13 @@ struct motor
     float target_speed;
     float speed;
     float speed_LPF_alpha;
-    pid_param_t pid_speed;
+    pid_t pid_speed;
 
     // 位置环
     float target_position;
     float position_last; // 上次位置
     float position;
-    pid_param_t pid_position;
+    pid_t pid_position;
 };
 typedef struct motor motor_t;
 
@@ -462,19 +447,49 @@ static inline vector_t foc_get_current_vector(float phase_a, float phase_b, floa
 /// @param target 目标值
 /// @param current 当前值
 /// @return 控制量
-static float pid_calculate(pid_param_t *pid, float target, float current)
+float pid_calculate(pid_t *pid, float target, float current)
 {
-    float diff;
-    pid->input = current * (1 - pid->alpha) + pid->input * pid->alpha; // 低通滤波
-    pid->error = target - pid->input;
-    pid->i += pid->error;
-    if (pid->i > pid->i_max / pid->scale)
-        pid->i = pid->i_max / pid->scale;
-    if (pid->i < pid->i_min / pid->scale)
-        pid->i = pid->i_min / pid->scale;
-    diff = pid->error - pid->last_error;
-    pid->last_error = pid->error;
-    return pid->scale * (pid->kp * pid->error + pid->ki *pid->i + pid->kd * diff);
+    float error, p_term, i_term, d_term, output;
+
+    // 1. 低通滤波 (可选，针对输入有噪声的情况)
+    // 注意：如果测量值current非常干净，可以去掉这一步
+    pid->_input = current * (1.0f - pid->alpha) + pid->_input * pid->alpha;
+
+    // 2. 计算误差
+    error = target - pid->_input;
+
+    // 3. 计算 P 项
+    p_term = pid->kp * error;
+
+    // 4. 计算 I 项
+    pid->_integral += pid->ki * error;
+
+    // === 积分抗饱和 (Integral Anti-Windup) ===
+    // 限制积分项不无限增长。
+    // 这里的 max_i_term 通常设置为最大输出的 30% ~ 100%
+    if (pid->_integral > pid->max_i_term) {
+        pid->_integral = pid->max_i_term;
+    } else if (pid->_integral < -pid->max_i_term) {
+        pid->_integral = -pid->max_i_term;
+    }
+    i_term = pid->_integral;
+
+    // 5. 计算 D 项
+    d_term = pid->kd * (error - pid->_last_error);
+    pid->_last_error = error;
+
+    // 6. 总输出计算 (去掉 scale，直接相加)
+    output = p_term + i_term + d_term;
+
+    // === 输出限幅 (Output Saturation) ===
+    // 限制最终给执行器的指令，防止越界
+    if (output > pid->max_out) {
+        output = pid->max_out;
+    } else if (output < -pid->max_out) {
+        output = -pid->max_out;
+    }
+
+    return output;
 }
 
 // 校准初始角度
@@ -525,24 +540,11 @@ foc_mode_t foc_get_mode(uint8_t pdrv){
     return motor->mode;
 }
 
-void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_ki, float id_kp, float id_ki)
+void foc_current_set_pid_param(uint8_t pdrv,pid_t current)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->pid_iq.scale = scale;
-    motor->pid_iq.kp = iq_kp;
-    motor->pid_iq.ki = iq_ki;
-    motor->pid_iq.i_max = 1;
-    motor->pid_iq.i_min = -1;
-    motor->pid_iq.i = 0;
-    motor->pid_iq.alpha = 0;
-
-    motor->pid_id.scale = scale;
-    motor->pid_id.kp = id_kp;
-    motor->pid_id.ki = id_ki;
-    motor->pid_id.i_max = 1;
-    motor->pid_id.i_min = -1;
-    motor->pid_id.i = 0;
-    motor->pid_id.alpha = 0;
+    motor->pid_iq = current;
+    motor->pid_id = current;
 }
 
 void foc_current_update(uint8_t pdrv,float Filter_coefficient)
@@ -570,22 +572,24 @@ void foc_current_update(uint8_t pdrv,float Filter_coefficient)
     motor->id = vector_projection(motor->parker_x, motor->current_by_clarke); // 4.5%
     motor->iq = vector_projection(motor->parker_y, motor->current_by_clarke); // 4.5%
 
-    if (motor->target_iq > motor->i_max)
-        motor->target_iq = motor->i_max;
-    if (motor->target_iq < -motor->i_max)
-        motor->target_iq = -motor->i_max;
-
-    float vd_raw = pid_calculate(&motor->pid_id, 0, motor->id);                // 4.2%
-    float vq_raw = pid_calculate(&motor->pid_iq, motor->target_iq, motor->iq); // 4.2%
-    vector_t v_raw={vd_raw,vq_raw};
-    float vector_len = vector_length(v_raw);
-    //缩放到-1到1之间
-    if(vector_len > 1){
-        vd_raw /= vector_len;
-        vq_raw /= vector_len;
+    if(motor->mode!=FOC_MODE_VOLTAGE){
+        if (motor->target_iq > motor->i_max)
+            motor->target_iq = motor->i_max;
+        if (motor->target_iq < -motor->i_max)
+            motor->target_iq = -motor->i_max;
+        
+        float vd_raw = pid_calculate(&motor->pid_id, 0, motor->id);                // 4.2%
+        float vq_raw = pid_calculate(&motor->pid_iq, motor->target_iq, motor->iq); // 4.2%
+        vector_t v_raw={vd_raw,vq_raw};
+        float vector_len = vector_length(v_raw);
+        //缩放到-1到1之间
+        if(vector_len > 1){
+            vd_raw /= vector_len;
+            vq_raw /= vector_len;
+        }
+        motor->vd = vd_raw;
+        motor->vq = vq_raw;
     }
-    motor->vd = vd_raw;
-    motor->vq = vq_raw;
 
     vector_t out_voltage_by_parker=vector_add(vector_multiply(motor->parker_x, motor->vd), vector_multiply(motor->parker_y, motor->vq));
 
@@ -601,17 +605,10 @@ void foc_current_update(uint8_t pdrv,float Filter_coefficient)
     foc_driver_set_phase(pdrv,motor->phase_a, motor->phase_b, motor->phase_c);
 
 }
-void foc_speed_set_pid_param(uint8_t pdrv, float scale, float LPF_alpha, float kp, float ki,float kd, float i_max)
+void foc_speed_set_pid_param(uint8_t pdrv, float LPF_alpha, pid_t speed)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->pid_speed.scale = scale;
-    motor->pid_speed.alpha = 0; // 低通滤波系数
-    motor->pid_speed.kp = kp;
-    motor->pid_speed.ki = ki;
-    motor->pid_speed.kd = kd;
-    motor->pid_speed.i_max = i_max;
-    motor->pid_speed.i_min = -i_max;
-    motor->pid_speed.i = 0;
+    motor->pid_speed = speed;
     motor->speed_LPF_alpha=LPF_alpha;
 }
 /// @brief 速度环更新
@@ -648,17 +645,10 @@ void foc_speed_update(uint8_t pdrv, uint32_t interval_us)
 /// @param ki
 /// @param kd
 /// @param imax
-void foc_position_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float kd, float imax)
+void foc_position_set_pid_param(uint8_t pdrv, pid_t position)
 {
     motor_t *motor = &motor_array[pdrv];
-    motor->pid_position.scale = scale;
-    motor->pid_position.alpha = alpha; // 低通滤波系数
-    motor->pid_position.kp = kp;
-    motor->pid_position.ki = ki;
-    motor->pid_position.kd = kd;
-    motor->pid_position.i_max = imax;
-    motor->pid_position.i_min = -imax;
-    motor->pid_position.i = 0;
+    motor->pid_position = position;
 }
 
 /// @brief 位置环更新，三环(位置->速度->电流)需要调用此函数，二环(位置->电流)不需要调用
@@ -737,6 +727,11 @@ float foc_get_target_position(uint8_t pdrv)
 {
     motor_t *motor = &motor_array[pdrv];
     return motor->target_position;
+}
+float foc_get_mech_angle(uint8_t pdrv){
+    motor_t *motor = &motor_array[pdrv];
+
+    return motor->mech_angle;
 }
 
 

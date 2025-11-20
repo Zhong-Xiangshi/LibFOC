@@ -5,13 +5,29 @@
 
 typedef enum
 {
-    FOC_MODE_CURRENT = 0,      // 力矩(电流)模式
-    FOC_MODE_SPEED = 1,        // 速度模式
-    FOC_MODE_POSITION = 2,     // 位置模式（三环）
-    FOC_MODE_POSITION_TWO = 3, // 位置模式（二环）
+    FOC_MODE_VOLTAGE = 0,      // 力矩(电压)模式
+    FOC_MODE_CURRENT,      // 力矩(电流)模式
+    FOC_MODE_SPEED,        // 速度模式
+    FOC_MODE_POSITION,     // 位置模式（三环）
+    FOC_MODE_POSITION_TWO, // 位置模式（二环）
     FOC_MODE_MAX
 } foc_mode_t;
 
+typedef struct {
+    // === 参数区 (调参时修改) ===
+    float kp;           // 比例系数
+    float ki;           // 积分系数
+    float kd;           // 微分系数
+    
+    float max_out;      // 输出限幅
+    float max_i_term;   // 积分限幅 (通常设为 max_out 的一部分，如 300)
+    float alpha;        // 滤波系数 (0-1)，0=不滤波
+    
+    // === 状态区 (运行时变化) ===
+    float _integral;     // 积分累加值
+    float _last_error;   // 上次误差
+    float _input;        // 上次输入 (用于低通滤波)
+} pid_t;
 
 /// @brief foc初始化
 /// @param pdrv 电机编号
@@ -23,7 +39,7 @@ typedef enum
 int foc_init(uint8_t pdrv, uint8_t pole_pairs, float motor_pwm_max, float i_max, float angle_calibration_pwm);
 
 // 设置电流环PID
-void foc_current_set_pid_param(uint8_t pdrv, float scale, float iq_kp, float iq_ki, float id_kp, float id_ki);
+void foc_current_set_pid_param(uint8_t pdrv, pid_t current);
 
 /// @brief 电流环更新。建议调用频率=最高机械频率*极对数*36（假设每间隔10°执行一次）
 /// @param pdrv 电机编号
@@ -33,18 +49,14 @@ void foc_current_update(uint8_t pdrv,float Filter_coefficient);
 
 /// @brief 设置速度环PI参数
 /// @param pdrv 电机编号
-/// @param scale 输出缩放，1为不缩放
 /// @param LPF_alpha 速度低通滤波，0-1，1为不使用。公式alpha = 2 * PI * dt * Fc，其中Fc为截止频率,dt为执行间隔（单位s）
-/// @param kp 
-/// @param ki 
-/// @param kd 
-/// @param i_max 积分限幅，积分最大值
-void foc_speed_set_pid_param(uint8_t pdrv, float scale, float LPF_alpha, float kp, float ki,float kd, float i_max);
+/// @param speed
+void foc_speed_set_pid_param(uint8_t pdrv, float LPF_alpha, pid_t speed);
 // 计算速度和速度环更新，参考调用频率4khz
 void foc_speed_update(uint8_t pdrv, uint32_t interval_us);
 
 // 设置位置环PID
-void foc_position_set_pid_param(uint8_t pdrv, float scale, float alpha, float kp, float ki, float kd, float imax);
+void foc_position_set_pid_param(uint8_t pdrv, pid_t position);
 // 计算位置和位置环更新，参考调用频率1khz
 void foc_position_update(uint8_t pdrv);     // 三环版本
 void foc_position_update_two(uint8_t pdrv); // 双环版本
@@ -59,6 +71,7 @@ void foc_set_target_position(uint8_t pdrv, float target);
 float foc_get_target_iq(uint8_t pdrv);
 float foc_get_target_velocity(uint8_t pdrv);
 float foc_get_target_position(uint8_t pdrv);
+float foc_get_mech_angle(uint8_t pdrv);
 
 
 // 获取当前值
